@@ -1,0 +1,13 @@
+*.un~
+*.swp
+tags
+target
+project/
+.history
+project.vim
+*.old
+.idea
+.project
+.classpath
+.metadata/
+sbt*
