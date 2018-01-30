@@ -1,8 +1,12 @@
 package com.lightbend.akka.sample
 
+import java.util.concurrent.TimeUnit
+
 import akka.actor.ActorSystem
 import akka.testkit.{TestKit, TestProbe}
 import org.scalatest.{BeforeAndAfterAll, FlatSpecLike, FunSuite, Matchers}
+
+import scala.concurrent.duration.FiniteDuration
 
 class DeviceSpec (_system: ActorSystem)
   extends TestKit(_system)
@@ -45,5 +49,25 @@ class DeviceSpec (_system: ActorSystem)
     val response2 = probe.expectMsgType[Device.RespondTemperature]
     response2.requestId should ===(4)
     response2.value should ===(Some(55.0))
+  }
+
+  "a device actor " should "reply to registration requests" in {
+    val probe = TestProbe()
+    val deviceActor = system.actorOf(Device.props("group", "device"))
+
+    deviceActor.tell(DeviceManager.RequestTrackDevice("group", "device"), probe.ref)
+    probe.expectMsg(DeviceManager.DeviceRegistered)
+    probe.lastSender should ===(deviceActor)
+  }
+
+  "a device actor " should "ignore wrong registration requests" in {
+    val probe = TestProbe()
+    val deviceActor = system.actorOf(Device.props("group", "device"))
+
+    deviceActor.tell(DeviceManager.RequestTrackDevice("wrongGroup", "device"), probe.ref)
+    probe.expectNoMsg(FiniteDuration(500, TimeUnit.MILLISECONDS))
+
+    deviceActor.tell(DeviceManager.RequestTrackDevice("group", "Wrongdevice"), probe.ref)
+    probe.expectNoMsg(FiniteDuration(500, TimeUnit.MILLISECONDS))
   }
 }
