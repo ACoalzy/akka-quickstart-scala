@@ -1,6 +1,6 @@
 package com.lightbend.akka.sample
 
-import akka.actor.{ActorSystem, PoisonPill, Terminated}
+import akka.actor.{ActorRef, ActorSystem, PoisonPill, Terminated}
 import akka.testkit.{TestKit, TestProbe}
 import org.scalatest.{BeforeAndAfterAll, FlatSpecLike, Matchers}
 
@@ -16,71 +16,61 @@ class DeviceManagerSpec (_system: ActorSystem)
     shutdown(system)
   }
 
-  "a device manager" should "create a device group and device when receives tracking request for new group/device" in {
+  def fixture = new {
     val probe = TestProbe()
     val managerActor = system.actorOf(DeviceManager.props())
+    def reg: (String, String) => ActorRef = registerDevice(managerActor, probe)
+  }
 
-    managerActor.tell(DeviceManager.RequestTrackDevice("group1", "d1"), probe.ref)
+  private def registerDevice(actor: ActorRef, probe: TestProbe)(group: String, device: String): ActorRef = {
+    actor.tell(DeviceManager.RequestTrackDevice(group, device), probe.ref)
     probe.expectMsg(DeviceManager.DeviceRegistered)
-    val device1 = probe.lastSender
+    probe.lastSender
+  }
 
-    // Check that the device actors are working
-    device1.tell(Device.RecordTemperature(requestId = 0, 1.0), probe.ref)
+  private def isWorking(actor: ActorRef, probe: TestProbe): Unit = {
+    actor.tell(Device.RecordTemperature(requestId = 0, 1.0), probe.ref)
     probe.expectMsg(Device.TemperatureRecorded(requestId = 0))
+  }
+
+  "a device manager" should "create a device group and device when receives tracking request for new group/device" in {
+    val f = fixture
+    val device1 = f.reg("group1", "d1")
+
+    isWorking(device1, f.probe)
   }
 
   "a device manager" should "return same device group and device when receives tracking request for same group/device" in {
-    val probe = TestProbe()
-    val managerActor = system.actorOf(DeviceManager.props())
-
-    managerActor.tell(DeviceManager.RequestTrackDevice("group1", "d1"), probe.ref)
-    probe.expectMsg(DeviceManager.DeviceRegistered)
-    val device1 = probe.lastSender
-
-    managerActor.tell(DeviceManager.RequestTrackDevice("group1", "d1"), probe.ref)
-    probe.expectMsg(DeviceManager.DeviceRegistered)
-    val device2 = probe.lastSender
+    val f = fixture
+    val device1 = f.reg("group1", "d1")
+    val device2 = f.reg("group1", "d1")
 
     assert(device1 == device2)
-
-    // Check that the device actor is working
-    device1.tell(Device.RecordTemperature(requestId = 0, 1.0), probe.ref)
-    probe.expectMsg(Device.TemperatureRecorded(requestId = 0))
+    isWorking(device1, f.probe)
   }
 
   "a device manager" should "return different devices when receives tracking request for same group/device separated by termination" in {
-    val probe = TestProbe()
-    val managerActor = system.actorOf(DeviceManager.props())
+    val f = fixture
+    val device1 = f.reg("group1", "d1")
 
-    managerActor.tell(DeviceManager.RequestTrackDevice("group1", "d1"), probe.ref)
-    probe.expectMsg(DeviceManager.DeviceRegistered)
-    val device1 = probe.lastSender
-
-    probe.watch(device1)
+    f.probe.watch(device1)
     device1 ! PoisonPill
-    probe.expectTerminated(device1)
+    f.probe.expectTerminated(device1)
 
-    managerActor.tell(DeviceManager.RequestTrackDevice("group1", "d1"), probe.ref)
-    probe.expectMsg(DeviceManager.DeviceRegistered)
-    val device2 = probe.lastSender
-
+    val device2 = f.reg("group1", "d1")
     assert(device1 != device2)
 
-    // Check that the device actor is working
-    device2.tell(Device.RecordTemperature(requestId = 0, 1.0), probe.ref)
-    probe.expectMsg(Device.TemperatureRecorded(requestId = 0))
+    isWorking(device2, f.probe)
   }
 
   "a device manager" should "be able to return list of tracked groups" in {
-    val probe = TestProbe()
-    val managerActor = system.actorOf(DeviceManager.props())
+    val f = fixture
+    f.reg("group1", "d1")
+    f.reg("group2", "d1")
+    f.reg("group3", "d1")
 
-    managerActor.tell(DeviceManager.RequestTrackDevice("group1", "d1"), probe.ref)
-    managerActor.tell(DeviceManager.RequestTrackDevice("group2", "d1"), probe.ref)
-    managerActor.tell(DeviceManager.RequestTrackDevice("group3", "d1"), probe.ref)
-
-    managerActor.tell(DeviceManager.RequestGroupList(123), probe.ref)
-    probe.expectMsg(DeviceManager.ReplyGroupList(123, Set("group1", "group2", "group3")))
+    f.managerActor.tell(DeviceManager.RequestGroupList(123), f.probe.ref)
+    f.probe.expectMsg(DeviceManager.ReplyGroupList(123, Set("group1", "group2", "group3")))
   }
 
 }

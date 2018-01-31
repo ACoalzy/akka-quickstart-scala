@@ -12,21 +12,14 @@ object DeviceGroup {
   def props(groupId: String): Props = Props(new DeviceGroup(groupId))
 
   final case class RequestDeviceList(requestId: Long)
-
   final case class ReplyDeviceList(requestId: Long, ids: Set[String])
-
   final case class RequestAllTemperatures(requestId: Long)
-
   final case class RespondAllTemperatures(requestId: Long, temperatures: Map[String, TemperatureReading])
 
   sealed trait TemperatureReading
-
   final case class Temperature(value: Double) extends TemperatureReading
-
   case object TemperatureNotAvailable extends TemperatureReading
-
   case object DeviceNotAvailable extends TemperatureReading
-
   case object DeviceTimedOut extends TemperatureReading
 
 }
@@ -69,11 +62,6 @@ class DeviceGroup(groupId: String) extends Actor with ActorLogging {
       deviceIdToActor -= deviceId
 
     case RequestAllTemperatures(requestId) =>
-      context.actorOf(DeviceGroupQuery.props(
-        actorToDeviceId = actorToDeviceId,
-        requestId = requestId,
-        requester = sender(),
-        FiniteDuration(3, TimeUnit.SECONDS)
-      ))
+      context.actorOf(DeviceGroupQuery.props(actorToDeviceId, requestId, sender(), FiniteDuration(3, TimeUnit.SECONDS)))
   }
 }
